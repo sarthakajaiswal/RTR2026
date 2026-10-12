@@ -1,0 +1,9 @@
+Programme Started Successfully!
+OpenGL Vendor = Intel
+OpenGL Renderer = Intel(R) Graphics
+OpenGL Version = 4.6.0 - Build 32.0.101.7076
+GLSL Version = 4.60 - Build 32.0.101.7076
+Number of extensions = 248
+Initialize() Completed Successfully.
+Shader program deleted succesfully
+Programme Terminated Successfully.

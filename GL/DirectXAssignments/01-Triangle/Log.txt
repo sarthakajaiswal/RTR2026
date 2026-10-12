@@ -1,0 +1,13 @@
+Program started succesfully
+initialize() > D3DCompile for vertex shader succesfull
+initialize() > gpID3D11Device::CreateVertexShader() for vertex shader successfull
+initialize() > D3DCompile for pixel shader succesfull
+initialize() > gpID3D11Device::CreatePixelShader() for pixel shader successfull
+initialize() > gpID3D11Device::CreateInputLayout() succesfull
+initialize() > gpID3D11Device::CreateBuffer() succesfull for position data
+initialize() > gpID3D11Device::CreateBuffer() succesfull for color data
+initialize() > gpID3D11Device::CreateBuffer() succesfull for uniform data
+initialize() > gpID3D11Device::CreateRasterizerState() succesfull
+initialize() > warmup resize completed succesfully
+WinMain() : initialize() completed Successfully
+Program terminated successfully

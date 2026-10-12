@@ -1,0 +1,22 @@
+Programme Started Successfully!
+OpenGL Vendor = Intel
+OpenGL Renderer = Intel(R) UHD Graphics
+OpenGL Version = 4.6.0 - Build 32.0.101.7077
+GLSL Version = 4.60 - Build 32.0.101.7077
+Number of extensions = 248
+before texture loaded
+0th image loaded
+1th image loaded
+2th image loaded
+3th image loaded
+4th image loaded
+5th image loaded
+texture loaded
+Texture loaded at path: textures/material_baseColor.png
+Texture loaded at path: textures/material_1_baseColor.png
+Texture loaded at path: textures/material_2_baseColor.png
+Texture loaded at path: textures/material_3_baseColor.png
+Texture loaded at path: textures/material_4_baseColor.png
+Model Loaded Succesfully : medival-house/scene.gltf
+Initialize() Completed Successfully.
+Programme Terminated Successfully.

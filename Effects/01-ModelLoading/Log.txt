@@ -1,0 +1,9 @@
+Programme Started Successfully!
+Texture failed to load at path: ures/material_baseColor.png
+Texture failed to load at path: ures/material_1_baseColor.png
+Texture failed to load at path: ures/material_2_baseColor.png
+Texture failed to load at path: ures/material_3_baseColor.png
+Texture failed to load at path: ures/material_4_baseColor.png
+Model Loaded Succesfully : medival-house/scene.gltf
+Initialize() Completed Successfully.
+Programme Terminated Successfully.

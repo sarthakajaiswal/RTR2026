@@ -1,0 +1,11 @@
+Model Information:
+* title:	2008 Land Rover Range Rover Supercharged
+* source:	https://sketchfab.com/3d-models/2008-land-rover-range-rover-supercharged-43fe3d9855ef409892d976bd8850d819
+* author:	Ddiaz Design (https://sketchfab.com/ddiaz-design)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "2008 Land Rover Range Rover Supercharged" (https://sketchfab.com/3d-models/2008-land-rover-range-rover-supercharged-43fe3d9855ef409892d976bd8850d819) by Ddiaz Design (https://sketchfab.com/ddiaz-design) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)

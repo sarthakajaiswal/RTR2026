@@ -1,0 +1,13 @@
+Programme Started Successfully!
+shader program created succesfully
+shader program created succesfully
+shader program created succesfully
+shader program created succesfully
+HDR Texture loading succesfull: textures/newport_loft.hdr
+shader program created succesfully
+shader program created succesfully
+result = 0
+Initialize() Completed Successfully.
+Shader program deleted succesfully
+Shader program deleted succesfully
+Programme Terminated Successfully.

@@ -1,0 +1,4 @@
+cl.exe /c /EHsc /I:C:\glew-2.1.0\include OGL.cpp camera.cpp 
+rc.exe OGL.rc
+link.exe OGL.obj OGL.res camera.obj assimp-vc143-mt.lib /LIBPATH:C:\glew-2.1.0\lib\release\x64 user32.lib gdi32.lib /SUBSYSTEM:WINDOWS
+

@@ -1,0 +1,4 @@
+Programme Started Successfully!
+Texture loaded : smoke.png
+Initialize() Completed Successfully.
+Programme Terminated Successfully.

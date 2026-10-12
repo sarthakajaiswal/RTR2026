@@ -1,0 +1,2 @@
+1) vmath uses angle in degrees for perspective() 
+while glm needs to be converted into radians first 

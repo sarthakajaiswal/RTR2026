@@ -1,0 +1,5 @@
+Programme Started Successfully!
+shader program created succesfully
+Initialize() Completed Successfully.
+Shader program deleted succesfully
+Programme Terminated Successfully.

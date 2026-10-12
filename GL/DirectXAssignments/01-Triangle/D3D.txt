@@ -1,0 +1,1275 @@
+// standard header files  
+#include <Windows.h> 
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <math.h> 
+
+// DirectX - D3D11 related header files 
+// #include <dxgi.h> 
+#include <d3d11.h> 
+#include <d3dcompiler.h> 
+
+// for d3d11 maths 
+#pragma warning(disable:4838) 
+#include "XNAMath/xnamath.h"  
+
+// custom header files 
+#include "D3D.h" 
+
+// libraries 
+#pragma comment(lib, "dxgi.lib") 
+#pragma comment(lib, "d3d11.lib") 
+#pragma comment(lib, "d3dcompiler.lib") 
+
+// macros 
+#define WIN_WIDTH   800 
+#define WIN_HEIGHT  600 
+
+// global function declarations 
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM); 
+
+// global variable declarations 
+// variables related to fullscreen 
+BOOL gbFullScreen = FALSE; 
+HWND ghwnd = NULL; 
+DWORD dwStyle; 
+WINDOWPLACEMENT wpPrev; 
+
+// file IO related variables 
+char gszLogFileName[] = "Log.txt"; 
+FILE* gpFile = NULL; 
+
+// Active window related variables 
+BOOL gbActiveWindow = FALSE; 
+
+// exit keypress related 
+BOOL gbEscapeKeyIsPressed = FALSE; 
+
+// D3D 11 related variables 
+IDXGISwapChain* gpIDXGISwapChain = NULL; // DXGI -> DirectX Graphics Chain | related to double buffer 
+ID3D11Device* gpID3D11Device = NULL; // Physical graphic card la represent krnarya logical graphic device 
+ID3D11DeviceContext* gpID3D11DeviceContext = NULL; // local device chi awastha 
+ID3D11RenderTargetView* gpID3D11RenderTargetView = NULL; // render krnyasathi cha target view 
+ID3D11DepthStencilView* gpID3D11DepthStencilView = NULL; 
+
+ID3D11VertexShader* gpID3D11VertexShader = NULL; 
+ID3D11PixelShader* gpID3D11PixelShader = NULL; 
+ID3D11Buffer* gpID3D11Buffer_PositionBuffer = NULL; 
+ID3D11Buffer* gpID3D11Buffer_ColorBuffer = NULL; 
+ID3D11Buffer* gpID3D11Buffer_ConstantBuffer = NULL; 
+ID3D11InputLayout* gpID3D11InputLayout = NULL; 
+
+ID3D11RasterizerState* gpID3D11RasterizerState = NULL; // for backface culling 
+
+struct CBUFFER // uniform in OpenGL 
+{
+    XMMATRIX WorldViewProjectionMatrix; // XM- XNA Math 
+};  
+
+float clearColor[4]; 
+
+XMMATRIX perspectiveProjectionMatrix; 
+
+// animation related variables 
+float anglePyramid = 0.0f; 
+
+// entry-point function 
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int iCmdShow) 
+{
+    // local function declarations 
+    HRESULT initialize(void); 
+    void display(void); 
+    void update(void); 
+    void uninitialize(void); 
+
+    // variable declarations 
+    WNDCLASSEX wndClass; 
+    HWND hwnd; 
+    MSG msg; 
+    TCHAR szAppName[] = TEXT("RTR6"); 
+    BOOL bDone = FALSE; 
+    HRESULT hr = S_OK; 
+
+    // code 
+    // create a log file 
+    gpFile = fopen(gszLogFileName, "w"); 
+    if(NULL == gpFile) 
+    {
+        MessageBox(NULL, TEXT("Log File Creation Failed"), TEXT("Error"), MB_OK | MB_ICONERROR); 
+        exit(EXIT_FAILURE); 
+    } 
+    else 
+    {
+        fprintf(gpFile, "Program started successfully\n"); 
+        fclose(gpFile); 
+    } 
+
+    // Window class initialization 
+    wndClass.cbSize = sizeof(WNDCLASSEX); 
+    wndClass.cbClsExtra = 0; 
+    wndClass.cbWndExtra = 0; 
+    wndClass.style = CS_HREDRAW | CS_VREDRAW; 
+    wndClass.hInstance = hInstance; 
+    wndClass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH); 
+    wndClass.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(MYICON)); 
+    wndClass.hIconSm = LoadIcon(hInstance, MAKEINTRESOURCE(MYICON)); 
+    wndClass.hCursor = LoadCursor(NULL, IDC_ARROW); 
+    wndClass.lpfnWndProc = WndProc; 
+    wndClass.lpszClassName = szAppName; 
+    wndClass.lpszMenuName = NULL; 
+
+    // window class registration 
+    RegisterClassEx(&wndClass); 
+
+    // create window 
+    hwnd = CreateWindowEx(
+        WS_EX_APPWINDOW, 
+        szAppName, 
+        TEXT("Sarthak Jaiswal: Direct3D 11 | 2D Rotation"), 
+        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE, 
+        GetSystemMetrics(SM_CXSCREEN)/2 - WIN_WIDTH/2, 
+        GetSystemMetrics(SM_CYSCREEN)/2 - WIN_HEIGHT/2, 
+        WIN_WIDTH, 
+        WIN_HEIGHT, 
+        NULL, 
+        NULL, 
+        hInstance, 
+        NULL
+    ); 
+    if(hwnd == NULL) 
+    {
+        fprintf(gpFile, "Failed to create window"); 
+        uninitialize(); 
+        exit(EXIT_FAILURE); 
+    } 
+
+    ghwnd = hwnd; 
+
+    // show window 
+    ShowWindow(hwnd, iCmdShow); 
+
+    // Paint the background of window 
+    UpdateWindow(hwnd); 
+
+    // initialize 
+    hr = initialize(); 
+    if(FAILED(hr)) 
+    {
+        // com errors crashes program, during this log file writting is not guarenteed everytime even after using fflush() 
+        // so it is recommended to open and close file every-time we write 
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "WinMain(): initialize() failed\n"); 
+        fclose(gpFile); 
+
+        uninitialize(); 
+        DestroyWindow(hwnd);
+        hwnd = NULL;  
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "WinMain(): initialize() completed successfully\n"); 
+        fclose(gpFile); 
+    } 
+
+    // set this window as foreground and active window 
+    SetForegroundWindow(hwnd); 
+    SetFocus(hwnd); 
+
+    // Game loop 
+    while(bDone == FALSE) 
+    {
+        if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) 
+        {
+            if(msg.message == WM_QUIT) 
+            {
+                bDone = TRUE; 
+            } 
+            else 
+            {
+                TranslateMessage(&msg); 
+                DispatchMessage(&msg); 
+            } 
+        } 
+        else 
+        {
+            if(gbActiveWindow == TRUE) 
+            {
+                if(gbEscapeKeyIsPressed == TRUE) 
+                {
+                    bDone = TRUE; 
+                } 
+
+                // render 
+                display(); 
+
+                // update 
+                update(); 
+            } 
+        } 
+    } 
+
+    // uninitialize 
+    uninitialize(); 
+
+    return ((int)msg.wParam); 
+} 
+
+// callback function 
+LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam) 
+{
+    // function declarations 
+    void toggleFullScreen(void); 
+    HRESULT resize(int, int); 
+    void uninitialize(void); 
+
+    // variable declarations 
+    HRESULT hr = S_OK; 
+
+    // code 
+    switch(iMsg) 
+    {
+        case WM_CREATE: 
+            ZeroMemory((void*)&wpPrev, sizeof(WINDOWPLACEMENT)); 
+            wpPrev.length = sizeof(WINDOWPLACEMENT); 
+            break; 
+        
+        case WM_SETFOCUS: 
+            gbActiveWindow = TRUE; 
+            break; 
+
+        case WM_KILLFOCUS: 
+            gbActiveWindow = FALSE; 
+            break; 
+
+        case WM_SIZE: 
+            if(gpID3D11DeviceContext)
+            {
+                hr = resize(LOWORD(lParam), HIWORD(lParam)); 
+                if(FAILED(hr)) 
+                {
+                    gpFile = fopen(gszLogFileName, "a+"); 
+                    fprintf(gpFile, "resize() failed\n"); 
+                    fclose(gpFile); 
+                } 
+            } 
+            break; 
+
+        case WM_KEYDOWN: 
+            switch(wParam) 
+            {
+                case VK_ESCAPE: 
+                    gbEscapeKeyIsPressed = TRUE; 
+                    break; 
+
+                default: 
+                    break; 
+            } 
+            break; 
+
+        case WM_CHAR: 
+            switch(wParam) 
+            {
+                case 'F': 
+                case 'f': 
+                    if(gbFullScreen == FALSE) 
+                    {
+                        toggleFullScreen(); 
+                        gbFullScreen = TRUE; 
+                    } 
+                    else 
+                    {
+                        toggleFullScreen(); 
+                        gbFullScreen = FALSE; 
+                    } 
+                    break; 
+
+                default: 
+                    break; 
+            } 
+            break; 
+
+        case WM_CLOSE: 
+            uninitialize(); 
+            break; 
+
+        case WM_DESTROY:  
+            PostQuitMessage(0); 
+            break; 
+
+        default: 
+            break; 
+    } 
+
+    return (DefWindowProc(hwnd, iMsg, wParam, lParam)); 
+} 
+
+void toggleFullScreen(void) 
+{
+    // variable declarations 
+    MONITORINFO mi; 
+
+    // code 
+    if(gbFullScreen == FALSE) 
+    {
+        dwStyle = GetWindowLong(ghwnd, GWL_STYLE); 
+        if(dwStyle & WS_OVERLAPPEDWINDOW) 
+        {
+            ZeroMemory((void*)&mi, sizeof(MONITORINFO)); 
+            mi.cbSize = sizeof(MONITORINFO); 
+
+            if(GetWindowPlacement(ghwnd, &wpPrev) && GetMonitorInfo(MonitorFromWindow(ghwnd, MONITORINFOF_PRIMARY), &mi))
+            {
+                SetWindowLong(ghwnd, GWL_STYLE, dwStyle & ~WS_OVERLAPPEDWINDOW);  
+                SetWindowPos(ghwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right-mi.rcMonitor.left, mi.rcMonitor.bottom-mi.rcMonitor.top, SWP_NOZORDER | SWP_FRAMECHANGED); 
+            } 
+        } 
+
+        ShowCursor(FALSE); 
+    } 
+    else 
+    {
+        SetWindowPlacement(ghwnd, &wpPrev); 
+        SetWindowLong(ghwnd, GWL_STYLE, dwStyle | WS_OVERLAPPEDWINDOW); 
+        SetWindowPos(ghwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED); 
+
+        ShowCursor(TRUE); 
+    } 
+} 
+
+HRESULT initialize(void) 
+{
+    // function declarations 
+    void printDXInfo(void); 
+    HRESULT resize(int width, int height); 
+
+    // variable declarations 
+    HRESULT hr = S_OK; 
+    DXGI_SWAP_CHAIN_DESC dxgiSwapChainDesc;  
+
+    // code 
+    // 1] swap chain descriptor initiazation 
+    ZeroMemory((void*)&dxgiSwapChainDesc, sizeof(DXGI_SWAP_CHAIN_DESC)); 
+    dxgiSwapChainDesc.BufferDesc.Width = WIN_WIDTH; 
+    dxgiSwapChainDesc.BufferDesc.Height = WIN_HEIGHT; 
+    dxgiSwapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // colr format of color buffer 
+    dxgiSwapChainDesc.BufferDesc.RefreshRate.Numerator = 60; 
+    dxgiSwapChainDesc.BufferDesc.RefreshRate.Denominator = 1; // we can keen nr = 120 and dr = 2 so as to get asnwer 60 
+    dxgiSwapChainDesc.BufferCount = 1; // number of swap buffers | D3D11 Says I have 1 buffer by default for window but if you are using fullscreen then get a new buffer 
+    dxgiSwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT; // the buffer created above will be used to render (as render target) 
+    // how to do sampling for rich textures 
+    // SampleDesc is parameter for color buffer which comes with SwapChain 
+    dxgiSwapChainDesc.SampleDesc.Count = 1; // we are using simple textures throught, so no need to do sampling and MSAA, so giving default value 1 | needed to be changed for high textures like HDR 
+    dxgiSwapChainDesc.SampleDesc.Quality = 0; // take quality by your choice 
+    dxgiSwapChainDesc.OutputWindow = ghwnd; 
+    dxgiSwapChainDesc.Windowed = TRUE; // are you starting with window (-> YES)? or directly fullscreen 
+
+    // 2] Get DXGI swap chain, D3D11 device, D3D11 device context, supported driver and supported feature level at once  
+    D3D_DRIVER_TYPE d3dDriverType; 
+    D3D_DRIVER_TYPE d3dDriverTypes[] = { 
+                        D3D_DRIVER_TYPE_HARDWARE, // Hardware driver de | analogous to xWindows glxIsDirect()
+                        D3D_DRIVER_TYPE_WARP, // WARP -> Windows Advanced Ransterization Platform, 
+                                                // Jr hardware driver (0th index wala) naahi miala tr ha deil, ha driver software driver asto pn hardware chya jawalpaas powerful asto 
+                                                // so if we have not dedicated driver like Nvidea, then also we are able to get simple rendering because of WARP 
+                        D3D_DRIVER_TYPE_SOFTWARE,  // kimaan gui disel asa tri driver de, also called as safe mode driver, 
+                        D3D_DRIVER_TYPE_REFERENCE // fakt debugging kraychi he, saadha driver de 
+                    }; 
+    D3D_FEATURE_LEVEL d3dFeatureLevel_Required = D3D_FEATURE_LEVEL_11_0; // DXGI swap chain, D3D11 device, D3D11 device context, supported driver sathi chi feature level 11.0 
+    D3D_FEATURE_LEVEL d3dFeatureLevel_Acquired = D3D_FEATURE_LEVEL_10_0; // kimaan 10.0 tri bagh 11.0 naahi bhetla tr 
+    UINT numDriverTypes = sizeof(d3dDriverTypes)/sizeof(d3dDriverTypes[0]); 
+
+    for(UINT i = 0; i < numDriverTypes; ++i) 
+    {
+        d3dDriverType = d3dDriverTypes[i]; 
+        hr = D3D11CreateDeviceAndSwapChain(
+            // 7 IN parameter 5 OUT
+            /*IN*/ NULL,    // adapter | multiple Graphics card asel tr tyatl choose kru sakto | ithe by default pahila asel to de -> NULL 
+            /*IN*/ d3dDriverType,   // driver type 
+            /*IN*/ NULL,    // je software driver waprnaar asnaar tr, tyachya related library load kraychi aani tyacha handle ithe dyaycha asto 
+            /*IN*/ 0,       // device create krtanna kutle flags waprayche | tula yogya watte te kr 
+            /*OUT*/ &d3dFeatureLevel_Required, // feature level bharun milte yaat 
+            /*IN*/ 1,       // feature level cha count, multiple feature levels waprnaar asaal tr 
+            /*IN*/ D3D11_SDK_VERSION,   // d3d11 ch kuthl version pahije -> OS chya driver ne detect kelel | D3D11_SDK_VERSION->ha macro OS assign krun save krun thevte, to ithe dene   
+            /*IN*/ &dxgiSwapChainDesc, 
+
+            /*OUT*/&gpIDXGISwapChain, 
+            /*OUT*/&gpID3D11Device, 
+            /*OUT*/&d3dFeatureLevel_Acquired, 
+            /*OUT*/&gpID3D11DeviceContext
+        ); 
+        if(SUCCEEDED(hr))
+            break; 
+    } 
+    // kuthlach driver milala naahi tr ? | as kahi usually hot naahi 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): D3D11CreateDeviceAndSwapChain() failed\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+
+    gpFile = fopen(gszLogFileName, "a+"); 
+    
+    // check which driver it uses 
+    if(d3dDriverType == D3D_DRIVER_TYPE_HARDWARE) 
+        fprintf(gpFile, "Chosen Driver is Hardware Driver\n"); 
+    else if(d3dDriverType == D3D_DRIVER_TYPE_WARP) 
+        fprintf(gpFile, "Chosen Driver is WARD Driver\n"); 
+    else if(d3dDriverType == D3D_DRIVER_TYPE_SOFTWARE) 
+        fprintf(gpFile, "Chosen Driver is Sofware Driver\n"); 
+    else if(d3dDriverType == D3D_DRIVER_TYPE_REFERENCE) 
+        fprintf(gpFile, "Chosen Driver is Reference Driver\n"); 
+    else 
+        fprintf(gpFile, "Chosen Driver is Unknown\n"); 
+
+    // check which feature level is acquired 
+    if(d3dFeatureLevel_Acquired == D3D_FEATURE_LEVEL_11_0) 
+        fprintf(gpFile, "Feature Level 11.0 is acquired\n"); 
+    else if(d3dFeatureLevel_Acquired == D3D_FEATURE_LEVEL_10_1) 
+        fprintf(gpFile, "Feature Level 10.1 is acquired\n"); 
+    else if(d3dFeatureLevel_Acquired == D3D_FEATURE_LEVEL_10_0) 
+        fprintf(gpFile, "Feature Level 10.0 is acquired\n"); 
+    else 
+        fprintf(gpFile, "Very Old feature level acquired\n"); 
+
+    fclose(gpFile); 
+
+    // printDXInfo(); 
+
+    // ===================== VERTEX SHADER ========================= 
+    const char* vertexShaderSourceCode = 
+    "cbuffer ConstantBuffer\n" \
+    "{\n" \
+    "   float4x4 worldViewProjectionMatrix;\n" \
+    "}\n" \
+
+    "struct Vertex_Output\n" \
+    "{\n" \
+    "   float4 position : SV_POSITION;\n" \
+    "   float4 color : COLOR;\n" \
+    "};\n" \
+
+    /* SV -> Shader Variable | SV_POSITION == gl_Position */ 
+    "Vertex_Output main(float4 pos : POSITION, float4 col : COLOR)\n" \
+    "{\n" \
+    "   Vertex_Output vertex_output;\n" \
+    "   vertex_output.position = mul(worldViewProjectionMatrix, pos);\n" \
+    "   vertex_output.color = col;\n" \
+    "   return (vertex_output);\n" \
+    "}\n"; 
+
+    // compile above shader 
+    ID3DBlob* pID3DBlob_VertexShaderCode = NULL; 
+    ID3DBlob* pID3DBlob_Error = NULL;   
+    hr = D3DCompile(
+                    vertexShaderSourceCode, 
+                    lstrlenA(vertexShaderSourceCode)+1, 
+                    "VS",   // shader type | preamble 
+                    NULL,   /* shader madhe macro waprnaar aahat ka | je ho tr tyacha structure tyar krun tyacha address */ 
+                    D3D_COMPILE_STANDARD_FILE_INCLUDE, /* headers include krnaar aahat ka ? -> fakt standard files include kr */ 
+                    "main", // entry point function of shader 
+                    "vs_5_0", // shader model 
+                    0, // shader ksahsathi waprnaar ? debugging, validation, optimization sathi ka? -> no normally compile kr 
+                    0, // jr ha code tumha as a effect mhanun FXC.exe la compile krayla dyaycha asel, tr tya effect cha constant dya -> nahi dyaycha he 
+                    &pID3DBlob_VertexShaderCode, 
+                    &pID3DBlob_Error 
+                ); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        if(pID3DBlob_Error != NULL) 
+        {
+            fprintf(gpFile, "initialize(): D3DCompile() for Vertex shader failed with error %s\n", 
+                    (char*)pID3DBlob_Error->GetBufferPointer());
+        } 
+        fclose(gpFile); 
+
+        pID3DBlob_Error->Release(); 
+        pID3DBlob_Error = NULL; 
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): D3DCompile() for Vertex shader successfull\n"); 
+        fclose(gpFile); 
+    } 
+
+    /* 
+        General Convenction: 
+        create vrun shuru honare device vr call kelele astat
+        set waali function context vrti aani pipeline stage related astat 
+    */ 
+    // CreateVertexShader() == glCreateShader() + glShaderSource() 
+    // create vertex shader object from above compiled code 
+    hr = gpID3D11Device->CreateVertexShader(
+                pID3DBlob_VertexShaderCode->GetBufferPointer(), 
+                pID3DBlob_VertexShaderCode->GetBufferSize(), 
+                NULL, // jr variable across shader share kraychi astil tr linkage cha address  
+                &gpID3D11VertexShader 
+            ); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateVertexShader() failed\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateVertexShader() Vertex shader created object successfully\n"); 
+        fclose(gpFile); 
+    } 
+
+    // set this object in pipeline 
+    gpID3D11DeviceContext->VSSetShader(
+                            gpID3D11VertexShader, 
+                            NULL,   // linkages (for shared variables) cha array 
+                            0       // array cha size 
+                        ); 
+
+    // ===================== PIXEL SHADER ========================= 
+    const char* pixelShaderSourceCode = 
+    "struct Vertex_Output\n" \
+    "{\n" \
+    "   float4 position : SV_POSITION;\n" \
+    "   float4 color : COLOR;\n" \
+    "};\n" \
+
+    "float4 main(Vertex_Output input) : SV_TARGET\n" \
+    "{\n" \
+    "   float4 color = input.color;\n" \
+    "   return (color);\n" \
+    "}\n"; 
+
+    // compile above shader 
+    ID3DBlob* pID3DBlob_PixelShaderCode = NULL; 
+    pID3DBlob_Error = NULL; 
+    hr = D3DCompile(
+                    pixelShaderSourceCode, 
+                    lstrlenA(pixelShaderSourceCode)+1, 
+                    "PS",   // shader type | preamble 
+                    NULL,   /* shader madhe macro waprnaar aahat ka | je ho tr tyacha structure tyar krun tyacha address */ 
+                    D3D_COMPILE_STANDARD_FILE_INCLUDE, /* headers include krnaar aahat ka ? -> fakt standard files include kr */ 
+                    "main", // entry point function of shader 
+                    "ps_5_0", // shader model 
+                    0, // shader ksahsathi waprnaar ? debugging, validation sathi ka? -> no normally compile kr 
+                    0, // jr ha code tumha as a effect mhanun FXC.exe la compile krayla dyaycha asel, tr tya effect cha constant dya -> nahi dyaycha he 
+                    &pID3DBlob_PixelShaderCode, 
+                    &pID3DBlob_Error 
+                ); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        if(pID3DBlob_Error != NULL) 
+        {
+            fprintf(gpFile, "initialize(): D3DCompile() for Pixel shader failed with error %s\n", 
+                    (char*)pID3DBlob_Error->GetBufferPointer());
+        } 
+        fclose(gpFile); 
+
+        pID3DBlob_Error->Release(); 
+        pID3DBlob_Error = NULL; 
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): D3DCompile() for Pixel shader successfull\n"); 
+        fclose(gpFile); 
+    } 
+    
+    // create Pixel shader object from above compiled code 
+    hr = gpID3D11Device->CreatePixelShader(
+                pID3DBlob_PixelShaderCode->GetBufferPointer(), 
+                pID3DBlob_PixelShaderCode->GetBufferSize(), 
+                NULL, // jr variable across shader share kraychi astil tr linkage cha address  
+                &gpID3D11PixelShader 
+            ); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreatePixelShader() failed\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreatePixelShader() Pixel shader created object successfully\n"); 
+        fclose(gpFile); 
+    } 
+
+    // set this object in pipeline 
+    gpID3D11DeviceContext->PSSetShader(
+                            gpID3D11PixelShader, 
+                            NULL,   // linkages (for shared variables) cha array 
+                            0       // array cha size 
+                        ); 
+
+    // initialize input layout 
+    D3D11_INPUT_ELEMENT_DESC d3d11InputElementDesc[2]; 
+    ZeroMemory((void*)d3d11InputElementDesc, sizeof(D3D11_INPUT_ELEMENT_DESC)*_ARRAYSIZE(d3d11InputElementDesc)); 
+    // position 
+    d3d11InputElementDesc[0].SemanticName = "POSITION"; 
+    d3d11InputElementDesc[0].SemanticIndex = 0; // position cha array suddha deu shakto, tyach astarting index 
+    d3d11InputElementDesc[0].Format = DXGI_FORMAT_R32G32B32_FLOAT; // RGB here represent xyz | 32-bit che 3. 
+    d3d11InputElementDesc[0].InputSlot = 0;
+    d3d11InputElementDesc[0].AlignedByteOffset = 0; // data packed aahe, alignment nahi takleli special 
+    d3d11InputElementDesc[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA; // data cha class | per-vertex, per-instance 
+    d3d11InputElementDesc[0].InstanceDataStepRate = 0; 
+    // color 
+    d3d11InputElementDesc[1].SemanticName = "COLOR"; 
+    d3d11InputElementDesc[1].SemanticIndex = 0; // color cha array suddha deu shakto, tyach astarting index 
+    d3d11InputElementDesc[1].Format = DXGI_FORMAT_R32G32B32_FLOAT; // RGB here represent xyz | 32-bit che 3. 
+    d3d11InputElementDesc[1].InputSlot = 1;
+    d3d11InputElementDesc[1].AlignedByteOffset = 0; // data packed aahe, alignment nahi takleli special 
+    d3d11InputElementDesc[1].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA; // data cha class | per-vertex, per-instance 
+    d3d11InputElementDesc[1].InstanceDataStepRate = 0; 
+
+    // create input layout based on abve structure 
+    hr = gpID3D11Device->CreateInputLayout(
+                            d3d11InputElementDesc, // array 
+                            _ARRAYSIZE(d3d11InputElementDesc), // size 
+                            pID3DBlob_VertexShaderCode->GetBufferPointer(), 
+                            pID3DBlob_VertexShaderCode->GetBufferSize(),  
+                            &gpID3D11InputLayout 
+                        ); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateInputLayout() failed\n"); 
+        fclose(gpFile); 
+
+        if(pID3DBlob_VertexShaderCode) 
+        {
+            pID3DBlob_VertexShaderCode->Release(); 
+            pID3DBlob_VertexShaderCode = NULL; 
+        } 
+        if(pID3DBlob_PixelShaderCode) 
+        {
+            pID3DBlob_PixelShaderCode->Release(); 
+            pID3DBlob_PixelShaderCode = NULL; 
+        } 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateInputLayout() succesfull\n"); 
+        fclose(gpFile); 
+    } 
+
+    // set this created layout into pipeline     
+    gpID3D11DeviceContext->IASetInputLayout(gpID3D11InputLayout); 
+
+    if(pID3DBlob_VertexShaderCode) 
+    {
+        pID3DBlob_VertexShaderCode->Release(); 
+        pID3DBlob_VertexShaderCode = NULL; 
+    } 
+    if(pID3DBlob_PixelShaderCode) 
+    {
+        pID3DBlob_PixelShaderCode->Release(); 
+        pID3DBlob_PixelShaderCode = NULL; 
+    } 
+
+    // --------------------------------------------------------------------------------------- 
+
+    // provide vertex position, color, normal, texCoord, etc... 
+	const float PyramidPosition[] = // clock-wise
+	{
+		// front
+        +0.0f, +1.0f, +0.0f, // front-top
+        +1.0f, -1.0f, -1.0f, // front-right
+        -1.0f, -1.0f, -1.0f, // front-left
+        
+        // right
+        +0.0f, +1.0f, +0.0f, // right-top
+        +1.0f, -1.0f, +1.0f, // right-right
+        +1.0f, -1.0f, -1.0f, // right-left
+
+        // back
+        +0.0f, +1.0f, +0.0f, // back-top
+        -1.0f, -1.0f, +1.0f, // back-right
+        +1.0f, -1.0f, +1.0f, // back-left
+
+        // left
+        +0.0f, +1.0f, +0.0f, // left-top
+        -1.0f, -1.0f, -1.0f, // left-right
+        -1.0f, -1.0f, +1.0f, // left-left
+	}; 
+    const float PyramidColor[] = 
+    {
+        // front 
+        1.0f, 0.0f, 0.0f, // front-top
+        0.0f, 0.0f, 1.0f, // front-left
+        0.0f, 1.0f, 0.0f, // front-right
+        
+        // right
+        1.0f, 0.0f, 0.0f, // right-top
+        0.0f, 1.0f, 0.0f, // right-right
+        0.0f, 0.0f, 1.0f, // right-left
+        
+        // back
+        1.0f, 0.0f, 0.0f, // back-top
+        0.0f, 0.0f, 1.0f, // back-right
+        0.0f, 1.0f, 0.0f, // back-left
+        
+        // left
+        1.0f, 0.0f, 0.0f, // left-top
+        0.0f, 1.0f, 0.0f, // left-right
+        0.0f, 0.0f, 1.0f, // left-left
+    }; 
+
+    // ------ position --------  
+    // create buffer for above vertex data  
+    D3D11_BUFFER_DESC d3d11BufferDesc; 
+    ZeroMemory((void*)&d3d11BufferDesc, sizeof(D3D11_BUFFER_DESC)); 
+    d3d11BufferDesc.Usage = D3D11_USAGE_DEFAULT; // == GL_STATIC_DRAW 
+    d3d11BufferDesc.ByteWidth = sizeof(float)*_ARRAYSIZE(PyramidPosition); 
+    d3d11BufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER; // vertex buffer sathi bind kr 
+
+    // introduce / initialize subresource of buffer for vertex data 
+    D3D11_SUBRESOURCE_DATA d3d11SubresourceData; 
+    ZeroMemory((void*)&d3d11SubresourceData, sizeof(D3D11_SUBRESOURCE_DATA)); 
+    d3d11SubresourceData.pSysMem = PyramidPosition; 
+
+    // now create the actual buffer : SETTING INTO PIPELINE WILL BE DONE IN DISPLAY 
+    hr = gpID3D11Device->CreateBuffer(&d3d11BufferDesc, &d3d11SubresourceData, &gpID3D11Buffer_PositionBuffer); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateBuffer() failed for position data\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateBuffer() for position data succesfull\n"); 
+        fclose(gpFile); 
+    }
+    
+    // ------ color ----------  
+    ZeroMemory((void*)&d3d11BufferDesc, sizeof(D3D11_BUFFER_DESC)); 
+    d3d11BufferDesc.Usage = D3D11_USAGE_DEFAULT; 
+    d3d11BufferDesc.ByteWidth = sizeof(float)*_ARRAYSIZE(PyramidColor); 
+    d3d11BufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER; 
+
+    // introduce / initialize subresource of buffer for color data 
+    ZeroMemory((void*)&d3d11SubresourceData, sizeof(D3D11_SUBRESOURCE_DATA)); 
+    d3d11SubresourceData.pSysMem = PyramidColor; 
+
+    // now create the actual buffer : SETTING INTO PIPELINE WILL BE DONE IN DISPLAY 
+    hr = gpID3D11Device->CreateBuffer(&d3d11BufferDesc, &d3d11SubresourceData, &gpID3D11Buffer_ColorBuffer); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateBuffer() failed for color data\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateBuffer() for color data succesfull\n"); 
+        fclose(gpFile); 
+    }
+
+    // Now create constant buffer (for uniform) 
+    ZeroMemory((void*)&d3d11BufferDesc, sizeof(D3D11_BUFFER_DESC)); 
+    d3d11BufferDesc.Usage = D3D11_USAGE_DEFAULT; 
+    d3d11BufferDesc.ByteWidth = sizeof(CBUFFER); 
+    d3d11BufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER; 
+
+    // create constant buffer 
+    hr = gpID3D11Device->CreateBuffer(&d3d11BufferDesc, NULL, &gpID3D11Buffer_ConstantBuffer);
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateBuffer() failed\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateBuffer() for constant data succesfull\n"); 
+        fclose(gpFile); 
+    } 
+
+    // set above empty constant buffer in pipeline : DATA WILL BE GIVEN IN DISPLAY 
+    gpID3D11DeviceContext->VSSetConstantBuffers(
+                                    0, // index of uniform 
+                                    1, // number of constant buffers  
+                                    &gpID3D11Buffer_ConstantBuffer 
+                                ); 
+
+    /* 
+        To disable backface culling (enabled by default in DirectX) 
+        1)declaring an interface 
+        2)initialize structure 
+        3)create context 
+        4)set it into pupeline 
+        5)release the created interface 
+    */ 
+    // set rasterizer state to disable backface culling so that backface of triangle will also get renderred during animation 
+    D3D11_RASTERIZER_DESC d3d11RasterizerDesc; 
+    ZeroMemory((void*)&d3d11RasterizerDesc, sizeof(D3D11_RASTERIZER_DESC)); 
+    d3d11RasterizerDesc.AntialiasedLineEnable   = FALSE;      // required when drawing line, so false 
+    d3d11RasterizerDesc.CullMode                = D3D11_CULL_NONE; 
+    d3d11RasterizerDesc.DepthBias               = 0; // small difference made in depth of object (eg: shadow and wall have same z value, so shadow's depth is reduced by very small value to render it first)
+                                                    // here we don't have depth so set to 0
+    d3d11RasterizerDesc.DepthBiasClamp          = 0.0; 
+    d3d11RasterizerDesc.DepthClipEnable         = TRUE; 
+    d3d11RasterizerDesc.FillMode                = D3D11_FILL_SOLID; // glPolygonMode() 
+    d3d11RasterizerDesc.FrontCounterClockwise   = FALSE; // Because DirectX is clockwise | [we can even follow anticlockwise!] 
+    d3d11RasterizerDesc.MultisampleEnable       = FALSE; 
+    d3d11RasterizerDesc.ScissorEnable           = FALSE; 
+    d3d11RasterizerDesc.SlopeScaledDepthBias    = 0.0f; 
+
+    hr = gpID3D11Device->CreateRasterizerState(&d3d11RasterizerDesc, &gpID3D11RasterizerState); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateRasterizerState() failed.\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): gpID3D11Device::CreateRasterizerState() succesfull\n"); 
+        fclose(gpFile); 
+    }
+
+    gpID3D11DeviceContext->RSSetState(gpID3D11RasterizerState); 
+
+    // set clear color 
+    clearColor[0] = 0.0f; 
+    clearColor[1] = 0.0f; 
+    clearColor[2] = 0.0f;
+    clearColor[3] = 1.0f; 
+
+    perspectiveProjectionMatrix = XMMatrixIdentity(); 
+
+    // warm-up resize 
+    hr = resize(WIN_WIDTH, WIN_HEIGHT); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): resize() failed\n"); 
+        fclose(gpFile); 
+
+        return (hr); 
+    } 
+    else 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "initialize(): resize() completed successfully\n"); 
+        fclose(gpFile); 
+    } 
+
+    return (hr); 
+} 
+
+void printDXInfo(void) 
+{
+    // variable declarations 
+    IDXGIFactory* pIDXGIFactory = NULL; 
+    IDXGIAdapter* pIDXGIAdapter = NULL; 
+    DXGI_ADAPTER_DESC dxgiAdapterDesc; 
+    HRESULT hr = S_OK; 
+    char str[255]; 
+
+    // code 
+    // 1) Get DXGIFactory 
+    hr = CreateDXGIFactory(__uuidof(IDXGIFactory), (void**)&pIDXGIFactory); 
+    // every interface in COM has given unique ID in world = uuid 
+    // uuid is 128 bit structure = DWORD(32) WORD(16) WORD(16) BYTE[8] (64)  
+    // this unique number creates network card for your machine 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "CreateDXGIFactory() failed for %d\n", hr); 
+        fclose(gpFile); 
+        goto cleanup; 
+    } 
+
+    // 2) from factory get adaptor 
+    if(pIDXGIFactory->EnumAdapters(0, &pIDXGIAdapter) != DXGI_ERROR_NOT_FOUND) 
+    {
+        ZeroMemory((void*)&dxgiAdapterDesc, sizeof(DXGI_ADAPTER_DESC)); 
+        pIDXGIAdapter->GetDesc(&dxgiAdapterDesc); 
+
+        // to convert wchar_t name of Graphic Card into char type 
+        WideCharToMultiByte(
+            CP_ACP, 
+            0, 
+            dxgiAdapterDesc.Description, 
+            255, 
+            str,    
+            255,    
+            NULL, 
+            NULL
+        ); 
+
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "Graphic Device Name = %s\n", str); 
+        fprintf(gpFile, "VRAM (In Bytes) = %I64d\n", (__int64)dxgiAdapterDesc.DedicatedVideoMemory); 
+        fprintf(gpFile, "VRAM (in GB) = %d\n", (int)ceil(dxgiAdapterDesc.DedicatedVideoMemory/1024.0/1024.0/1024.0)); 
+        fclose(gpFile); 
+    } 
+    else
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "iDXGIFactory::EnumAdapters() failed\n"); 
+        fclose(gpFile); 
+
+        goto cleanup; 
+    }  
+
+cleanup: 
+    if(pIDXGIAdapter != NULL) 
+    {
+        pIDXGIAdapter->Release(); 
+        pIDXGIAdapter = NULL; 
+    } 
+
+    if(pIDXGIFactory != NULL) 
+    {
+        pIDXGIFactory->Release(); 
+        pIDXGIFactory = NULL; 
+    } 
+} 
+
+// DirectX mhanto window size dependent resources he june jaun naveen tayaar vhawet 
+HRESULT resize(int width, int height) 
+{
+    // variable declarations 
+    HRESULT hr; 
+
+    // code 
+    // 1] Render taget view asel tr release kr kaaran tshi naveen tayar kraycha aahe 
+    // 2] resize swap chain buffers according to new width and height 
+    // 3] render target view sathi ch color buffer 
+        // ithe empty texture tyar krun delya jaato aani sangitlya jaat he Render Target View mhanun ghe tyat nantr color bharle jaatil 
+        // A] SwapChain madhn naveen buffer ghe render target tyar krnya sathi 
+        // B] Empty texture tyar kr RTV sathi 
+        // c] RTV madhe ha texture set kr 
+    // 4] tyar kelela Render Target View Device context la dya 
+    // 5] Viewport tyar kr 
+    // 6] tyar kelela viewport pipeline madhe set kr 
+
+    /* 
+        ==== DEPTH RELATED ==== 
+        as color buffer is already present with render target view, we use GetBuffer() on SwapChain 
+        but as depth buffer is not readymade, it is like, if we want the attach else let it be. 
+        So we will create a depth buffer and attach it to our swap chain 
+
+        we are using texture as our color buffer 
+        As depth is also a color! we are using texture color for depth too. 
+
+        Only difference is that, color buffer texture is created by system, WSI, we do not need to set its properties 
+        on other hand, we will 'create' texture for depth, so properties needs to set by programmer 
+    */ 
+
+    // 1) Release Depth Stencil view (DSV) if already present 
+    if(gpID3D11DepthStencilView) 
+    {
+        gpID3D11DepthStencilView->Release(); 
+        gpID3D11DepthStencilView = NULL; 
+    } 
+
+    // Release render target view (RTV) if already present 
+    if(gpID3D11RenderTargetView)  
+    {
+        gpID3D11RenderTargetView->Release(); 
+        gpID3D11RenderTargetView = NULL; 
+    } 
+
+    // 2) Resize swap chain buffers according to new size 
+    gpIDXGISwapChain->ResizeBuffers(
+        1,      // kiti buffers resize kru | pn aapn 2 waprtoy na | 1 aadhipasun ch ast tyachya jawal 
+        width,  // width 
+        height, // height
+        DXGI_FORMAT_R8G8B8A8_UNORM, // format  
+        NULL    // swapchain flags -> default 
+    ); 
+
+    // 3) Get buffer from swap chain for Render Target View 
+    // A B) 
+    ID3D11Texture2D *pID3D11Texture2D_BackBuffer = NULL;  
+    gpIDXGISwapChain->GetBuffer(
+            0, // pahije aslelya buffer cha index 
+            __uuidof(ID3D11Texture2D), // pahije aslelya buffer cha uuid 
+            (void**)&pID3D11Texture2D_BackBuffer 
+        ); 
+    // C) Create Render Target View using above textured swapchain buffer 
+    hr = gpID3D11Device->CreateRenderTargetView(
+            pID3D11Texture2D_BackBuffer, 
+            NULL,   // as system is giving properties by itself, we do not give any descriptor here, so NULL 
+                    // render target view sathi kaahi description | jyanchi mipmap level 0 aste te ithe null detat  
+                    // used in high quality effects, deferred rendering, ray tracing, fbo, MRTs 
+            &gpID3D11RenderTargetView 
+        ); 
+    if(FAILED(hr)) 
+    {
+        if(pID3D11Texture2D_BackBuffer) 
+        {
+            pID3D11Texture2D_BackBuffer->Release(); 
+            pID3D11Texture2D_BackBuffer = NULL; 
+        } 
+
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "resize() > gpID3D11Device::CreateRenderTargetView() failed\n"); 
+        fclose(gpFile);
+    } 
+    pID3D11Texture2D_BackBuffer->Release(); 
+    pID3D11Texture2D_BackBuffer = NULL; 
+
+    // texture property of color buffer of RTV are already set WSI, our job is just to get it into texture interface 
+    // that is what we did in GetBuffer() and CreateRenderTargetView() 
+    // This is not case with depth stencil buffer, it can't be get from WSI, it has to be created new on out own 
+    // And hence, its texture properties has to be set by us, not by WSI 
+    D3D11_TEXTURE2D_DESC d3d11Texture2DDesc; 
+    ZeroMemory((void*)&d3d11Texture2DDesc, sizeof(D3D11_TEXTURE2D_DESC)); 
+    d3d11Texture2DDesc.Width = (UINT)width; 
+    d3d11Texture2DDesc.Height = (UINT)height; 
+    d3d11Texture2DDesc.ArraySize = 1; 
+    d3d11Texture2DDesc.MipLevels = 1; 
+    d3d11Texture2DDesc.SampleDesc.Count = 1; // we can use 4 here, for heavy texture use 4 (ddr, hdr, ktx,...) 
+    d3d11Texture2DDesc.SampleDesc.Quality = 0; // if count is 4, use 1 here 
+    d3d11Texture2DDesc.Format = DXGI_FORMAT_D32_FLOAT; 
+    d3d11Texture2DDesc.Usage = D3D11_USAGE_DEFAULT; 
+    d3d11Texture2DDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL; 
+    d3d11Texture2DDesc.CPUAccessFlags = 0; 
+    d3d11Texture2DDesc.MiscFlags = 0; 
+
+    // now create 2D texture from above structure 
+    ID3D11Texture2D* pID3D11Texture2D_DepthStencilBuffer = NULL; 
+    hr = gpID3D11Device->CreateTexture2D(
+                &d3d11Texture2DDesc, 
+                NULL, 
+                &pID3D11Texture2D_DepthStencilBuffer 
+            ); 
+    if(FAILED(hr)) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "resize() > gpID3D11Device::CreateTexture2D() failed\n"); 
+        fclose(gpFile);
+    } 
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC d3d11DepthStencilViewDesc; 
+    ZeroMemory((void*)&d3d11DepthStencilViewDesc, sizeof(D3D11_DEPTH_STENCIL_VIEW_DESC)); 
+    d3d11DepthStencilViewDesc.Format = DXGI_FORMAT_D32_FLOAT; 
+    d3d11DepthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS; // ms-multisampling 
+
+    hr = gpID3D11Device->CreateDepthStencilView(pID3D11Texture2D_DepthStencilBuffer, &d3d11DepthStencilViewDesc, &gpID3D11DepthStencilView); 
+    if(FAILED(hr)) 
+    {
+        if(pID3D11Texture2D_DepthStencilBuffer) 
+        {
+            pID3D11Texture2D_DepthStencilBuffer->Release(); 
+            pID3D11Texture2D_DepthStencilBuffer = NULL; 
+        } 
+
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "resize() > gpID3D11Device::CreateDepthStencilView() failed\n"); 
+        fclose(gpFile);
+    } 
+
+    // set this render target view and depth stencil view in pipeline 
+    // Jevha Jevha Pipeline madhli stage set kraychi asel tevha function device context vrch call kel jail aani function ch naav stage cha acronym ne start hoil 
+    gpID3D11DeviceContext->OMSetRenderTargets( // OM -> Output Merger stage 
+        1, // kiti render target set krtay | used in MRTs 
+        &gpID3D11RenderTargetView, // render targets cha array 
+        gpID3D11DepthStencilView 
+    ); 
+
+    // Initialize viewport structure 
+    D3D11_VIEWPORT d3d11Viewport; 
+    ZeroMemory((void*)&d3d11Viewport, sizeof(D3D11_VIEWPORT)); 
+    d3d11Viewport.TopLeftX = 0.0f; 
+    d3d11Viewport.TopLeftY = 0.0f; 
+    d3d11Viewport.Width = (float)width; 
+    d3d11Viewport.Height = (float)height; 
+    d3d11Viewport.MinDepth = 0.0f; 
+    d3d11Viewport.MaxDepth = 1.0; 
+
+    // set this viewport in pipeline 
+    gpID3D11DeviceContext->RSSetViewports(1, &d3d11Viewport); 
+
+    // set perspective Matrix 
+    perspectiveProjectionMatrix = XMMatrixPerspectiveFovLH(
+                                    XMConvertToRadians(45.0f), 
+                                    (float)width / (float)height, 
+                                    0.1f, 
+                                    100.0f 
+                                ); 
+
+    return (hr); 
+} 
+
+void display(void) 
+{
+    // code 
+    // clear color 
+    gpID3D11DeviceContext->ClearRenderTargetView(gpID3D11RenderTargetView, clearColor); 
+    gpID3D11DeviceContext->ClearDepthStencilView(
+        gpID3D11DepthStencilView, 
+        D3D11_CLEAR_DEPTH, // kaay clear kraych he, depth ki stencil 
+        1.0f,   // depth clear value 
+        0       // stencil clear value 
+    ); 
+
+    // set vertex buffer here created in initialize() 
+    // for position 
+    UINT stride = sizeof(float) * 3; 
+    UINT offset = 0; 
+    gpID3D11DeviceContext->IASetVertexBuffers(
+                            0,  // slot kitwa aahe 
+                            1,  // eka slot madhe multiple vertex buffer astil tr tuze kiti aahe ? 
+                            &gpID3D11Buffer_PositionBuffer, 
+                            &stride, 
+                            &offset 
+                        ); 
+    // for color 
+    stride = sizeof(float) * 3; 
+    offset = 0; 
+    gpID3D11DeviceContext->IASetVertexBuffers(
+                            1, 
+                            1, 
+                            &gpID3D11Buffer_ColorBuffer, 
+                            &stride, 
+                            &offset 
+                        );  
+
+    // set primitive topology
+    gpID3D11DeviceContext->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);  
+
+    XMMATRIX worldMatrix = XMMatrixIdentity(); 
+    XMMATRIX translationMatrix = XMMatrixIdentity(); 
+    translationMatrix = XMMatrixTranslation(0.0f, 0.0, 6.0f); 
+    XMMATRIX rotationMatrix = XMMatrixIdentity(); 
+    rotationMatrix = XMMatrixRotationY(XMConvertToRadians(anglePyramid)); 
+
+    worldMatrix = rotationMatrix * translationMatrix; // order is important  
+    XMMATRIX viewMatrix = XMMatrixIdentity(); 
+
+    XMMATRIX wvpMatrix = XMMatrixIdentity(); 
+    wvpMatrix = worldMatrix * viewMatrix * perspectiveProjectionMatrix; 
+
+    // now push this wvp matrix into vertex shader 
+    CBUFFER constantBuffer; 
+    ZeroMemory((void*)&constantBuffer, sizeof(CBUFFER)); 
+    constantBuffer.WorldViewProjectionMatrix = wvpMatrix; 
+
+    gpID3D11DeviceContext->UpdateSubresource(
+                            gpID3D11Buffer_ConstantBuffer, 
+                            0, // constant buffer cha base index | slot number  
+                            NULL, // bounding box -> not required for us | required in ray tracing, etc 
+                            &constantBuffer, 
+                            0, // data multiple row madhe det asal tr 
+                            0 // depth buffer / depth slicing sathi ast 
+                        ); 
+
+    // draw geometry 
+    gpID3D11DeviceContext->Draw(12, 0); 
+
+    // present this swapchain buffers to swapchain / WSI (Windows System Infrastructure) 
+    gpIDXGISwapChain->Present(
+        0, // synchronization kraych ka, kaahi vegl aahe ka sync sathi -> dxgiSwapChainDesc madhe dilelya refrest rate sodun sync sathi kaahi naahi he, tu tuz default wapr 
+        0 
+    ); 
+} 
+
+void update(void) 
+{
+    // code 
+    if(anglePyramid >= 360.0f) 
+        anglePyramid = anglePyramid - 360.0f; 
+    anglePyramid = anglePyramid + 0.01f; 
+} 
+
+void uninitialize(void) 
+{
+    // code 
+    if(gpID3D11Buffer_ConstantBuffer) 
+    {
+        gpID3D11Buffer_ConstantBuffer->Release(); 
+        gpID3D11Buffer_ConstantBuffer = NULL; 
+    } 
+    if(gpID3D11Buffer_ColorBuffer) 
+    {
+        gpID3D11Buffer_ColorBuffer->Release(); 
+        gpID3D11Buffer_ColorBuffer = NULL; 
+    } 
+    if(gpID3D11Buffer_PositionBuffer) 
+    {
+        gpID3D11Buffer_PositionBuffer->Release(); 
+        gpID3D11Buffer_PositionBuffer = NULL; 
+    } 
+    
+    if(gpID3D11PixelShader) 
+    {
+        gpID3D11PixelShader->Release(); 
+        gpID3D11PixelShader = NULL; 
+    } 
+    if(gpID3D11VertexShader) 
+    {
+        gpID3D11VertexShader->Release(); 
+        gpID3D11VertexShader = NULL; 
+    } 
+
+    if(gpID3D11DepthStencilView) 
+    {
+        gpID3D11DepthStencilView->Release(); 
+        gpID3D11DepthStencilView = NULL; 
+    } 
+    if(gpID3D11RenderTargetView) 
+    {
+        gpID3D11RenderTargetView->Release(); 
+        gpID3D11RenderTargetView = NULL; 
+    } 
+
+    if(gpID3D11DeviceContext) 
+    {
+        gpID3D11DeviceContext->Release(); 
+        gpID3D11DeviceContext= NULL; 
+    } 
+
+    if(gpIDXGISwapChain) 
+    {
+        gpIDXGISwapChain->Release(); 
+        gpIDXGISwapChain = NULL; 
+    } 
+
+    // saglyat shevti device release kraycha 
+    if(gpID3D11Device) 
+    {
+        gpID3D11Device->Release(); 
+        gpID3D11Device = NULL; 
+    } 
+
+    // close log file 
+    if(gpFile) 
+    {
+        gpFile = fopen(gszLogFileName, "a+"); 
+        fprintf(gpFile, "Program terminated successfully\n"); 
+        fclose(gpFile); 
+        gpFile = NULL; 
+    } 
+} 
+

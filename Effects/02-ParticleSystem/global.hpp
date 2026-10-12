@@ -1,0 +1,13 @@
+#pragma once 
+
+#define OFFSET_OF(type, mem)	((unsigned long long)&(((type*)0)->mem))
+
+enum 
+{
+	AMC_ATTRIBUTE_POSITION = 0, 
+	AMC_ATTRIBUTE_TEXTURE0,
+	AMC_ATTRIBUTE_TEXTURE1,
+	AMC_ATTRIBUTE_TEXTURE2,
+	AMC_ATTRIBUTE_COLOR, 
+	AMC_ATTRIBUTE_NORMAL 
+}; 
